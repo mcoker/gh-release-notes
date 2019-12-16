@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+  <head>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <script src="https://rawgit.com/showdownjs/showdown/develop/dist/showdown.min.js"></script>
+    <style>
+      body {
+        background: #eee;
+        justify-items: center;
+      }
+      body,
+      .form {
+        display: grid;
+        grid-gap: 1em;
+      }
+      .form {
+        justify-items: start;
+      }
+      .card {
+        background: white;
+        padding: 1em;
+        border: 1px solid #ddd;
+        box-shadow: 0 2px 3px rgba(0,0,0,0.5);
+        width: 80%;
+        max-width: 960px;
+      }
+      .card__source {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Generate release notes</h1>
+    <form id="form" class="card form">
+      <label class="form__label">Name: <input type="text" id="name" name="name" value="patternfly"></label>
+      <label class="form__label">Repo: <input type="text" id="repo" name="repo" value="patternfly-next"></label>
+      <label class="form__label">Start date: <input type="text" id="startDate" name="startDate"></label>
+      <label class="form__label">End date: <input type="text" id="endDate" name="endDate"></label>
+      <input type="submit">
+    </form>
+
+    <div id="output" class="card">
+      <h2>Source</h2>
+      <div id="source" class="card__source"></div>
+      <h2>Preview</h2>
+      <div id="preview" class="card__preview"></div>
+    </div>
+
+    <script>
+      function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+      }
+
+      function formatDate(date) {
+        var year = date.getFullYear(),
+            month = '' + (date.getMonth() + 1),
+            day = '' + date.getDate();
+
+        return [year, month, day].join('-');
+      }
+
+      $(function() {
+        var converter = new showdown.Converter(),
+            d = new Date(),
+            today = formatDate(d),
+            prevReleaseDate = formatDate(new Date(d.setDate(d.getDate() - 21))),
+            $startDate = $('#startDate'),
+            $endDate = $('#endDate');
+
+        $startDate.val(prevReleaseDate);
+        $endDate.val(today);
+
+
+        $('#form').on('submit', function() {
+          var name = $('#name').val(),
+              repo = $('#repo').val(),
+              startDate = $('#startDate').val(),
+              endDate = $('#endDate').val(),
+              url = 'https://api.github.com/search/issues?q=repo:' + name + '/' + repo + '+is:pr+merged:' + startDate + '..' + endDate + '+sort:updated-desc&per_page=100',
+              $output = $('#output'),
+              $source = $('#source'),
+              $preview = $('#preview'),
+              notesArr = [],
+              output = '';
+
+          $.getJSON(url + '&callback=?', function(data) {
+            console.log(data);
+
+            var items = data['data']['items'];
+
+            $(items).each(function(i, val) {
+              var itemTitle = val.title,
+                  itemUrl = val.html_url,
+                  itemPrNum = itemUrl.split('/')[6],
+                  itemPrefix,
+                  itemType,
+                  itemComponent,
+                  itemMessage;
+
+              if (itemTitle.indexOf(':') > -1) {
+                itemPrefix = itemTitle.split(':')[0];
+                itemMessage = itemTitle.split(':')[1];
+              } else {
+                itemPrefix = 'undefined(undefined)';
+                itemMessage = itemTitle;
+              }
+
+              itemType = itemPrefix.replace(/\(.*/g, '');
+
+              if (itemPrefix.indexOf('(') > -1) {
+                itemComponent = itemPrefix.match(/\((.*)\)/)[1];
+              } else {
+                itemComponent = 'undefined';
+              }
+
+              notesArr.push('- **' + capitalizeFirstLetter(itemComponent.replace(/-/g, ' ').trim()) + ':** ' + capitalizeFirstLetter(itemMessage.trim()) + ' ([#' + itemPrNum.trim() + '](' + itemUrl.trim() + '))');
+            });
+
+            notesArr = notesArr.sort();
+
+            for (var i = 0; i < notesArr.length; i++) {
+              output += notesArr[i] + '\r\n';
+            }
+
+            console.log(output);
+
+            $source.html(output);
+            $preview.html(converter.makeHtml(output));
+          });
+          return false;
+        })
+      })
+    </script>
+  </body>
+</html>
+
+
